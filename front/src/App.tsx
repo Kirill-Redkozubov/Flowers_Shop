@@ -1,5 +1,7 @@
 import { useEffect, useState} from "react";
 import type { Bouquet } from "./types.ts";
+import Header from "./components/Header.tsx";
+import Hero from "./components/Hero.tsx";
 
 
 function App() {
@@ -17,6 +19,8 @@ function App() {
 
   return (
     <div>
+      <Header/>
+        <Hero/>
       <h1>Популярные букеты</h1>
       <ul>
         {bouquets.map((bouquet) => (

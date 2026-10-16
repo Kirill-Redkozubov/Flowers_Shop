@@ -1,13 +1,13 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import create_engine, select
+from pathlib import Path
 
+from sqlalchemy.orm import DeclarativeBase, mapped_column, Mapped, Session
 
-class Bouquet(BaseModel):
-    id: int
-    name: str
-    price: int
-    description: str = ''
+DB_PATH = Path(__file__).parent / "bouquets.db"
+engine = create_engine(f"sqlite:///{DB_PATH}")
 
 app = FastAPI()
 
@@ -18,26 +18,49 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+class Bouquet(BaseModel):
+    model_config = {'from_attributes': True}
 
-bouquets = [
-    {"id": 1, "name": "Букет красных роз", "price": 4950},
-    {"id": 2, "name": "Белые лилии", "price": 5450},
-    {"id": 3, "name": "Весеннее настроение", "price": 3950, "description": "Классика для особого повода"},
-    {"id": 4, "name": "Нежные пионы", "price": 6450},
-    {"id": 5, "name": "Солнечные подсолнухи", "price": 3450, "description": "Классика для особого повода"},
-    {"id": 6, "name": "Изысканная орхидея", "price": 7950, "description": "Классика для особого повода"},
-    {"id": 7, "name": "Пастельная гармония", "price": 4250},
-    {"id": 8, "name": "Садовая классика", "price": 4750},
-]
+    id: int
+    name: str
+    price: int
+    discountSum: int
+    oldPrice: int
+    photo: str | None = None
+    link: str | None = None
 
-@app.get("/api/bouquets", response_model=list[Bouquet])
-def get_bouquets():
-    return bouquets
 
-@app.get('/api/bouquets/{bouquet_id}', response_model=Bouquet)
-def get_bouquet(bouquet_id: int):
-    for bouquet in bouquets:
-        if bouquet['id'] == bouquet_id:
-            return bouquet
-    raise HTTPException(status_code=404, detail='Букет не найден')
+class Base(DeclarativeBase):
+    pass
+
+
+class Card(Base):
+    __tablename__ = "bouquets"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str]
+    price: Mapped[int]
+    oldPrice: Mapped[int]
+    discountSum: Mapped[int]
+    photo: Mapped[str | None]
+    link: Mapped[str | None]
+
+
+def get_session():
+    with Session(engine) as session:
+        yield session
+
+
+@app.get("/api/cards", response_model=list[Bouquet])
+def get_cards(session: Session = Depends(get_session)):
+    rows = session.scalars(select(Card).limit(10)).all()
+    return rows
+
+
+@app.get("/api/bouquets/{bouquet_id}", response_model=Bouquet)
+def get_bouquet(bouquet_id: int, session: Session = Depends(get_session)):
+    card = session.get(Card, bouquet_id)
+    if card is None:
+        raise HTTPException(status_code=404, detail="Букет не найден")
+    return card
 
