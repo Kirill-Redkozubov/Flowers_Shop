@@ -1,10 +1,12 @@
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, Query
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, select, func
 from pathlib import Path
 
 from sqlalchemy.orm import DeclarativeBase, mapped_column, Mapped, Session
+
+
 
 DB_PATH = Path(__file__).parent / "bouquets.db"
 engine = create_engine(f"sqlite:///{DB_PATH}")
@@ -18,6 +20,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# validation for one card
 class Bouquet(BaseModel):
     model_config = {'from_attributes': True}
 
@@ -28,6 +31,11 @@ class Bouquet(BaseModel):
     oldPrice: int
     photo: str | None = None
     link: str | None = None
+
+# validation for cards with general count
+class BouquetPage(BaseModel):
+    items: list[Bouquet]
+    total: int
 
 
 class Base(DeclarativeBase):
@@ -51,10 +59,26 @@ def get_session():
         yield session
 
 
-@app.get("/api/cards", response_model=list[Bouquet])
-def get_cards(session: Session = Depends(get_session)):
-    rows = session.scalars(select(Card).limit(10)).all()
-    return rows
+@app.get("/api/bouquets", response_model=BouquetPage)
+def get_bouquets(
+    limit: int = Query(12, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    session: Session = Depends(get_session),
+):
+    total = session.scalar(select(func.count()).select_from(Card))
+    items = session.scalars(select(Card).order_by(Card.id).limit(limit).offset(offset)).all()
+    return BouquetPage(items=[Bouquet.model_validate(item) for item in items], total=total)
+
+@app.get("/api/bouquets", response_model=BouquetPage)
+def get_bouquets(
+    limit: int = Query(12, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    session: Session = Depends(get_session),
+):
+    total = session.scalar(select(func.count()).select_from(Card))
+    stmt = select(Card).order_by(Card.id).limit(limit).offset(offset)
+    items = session.scalars(stmt).all()
+    return {"items": items, "total": total}
 
 
 @app.get("/api/bouquets/{bouquet_id}", response_model=Bouquet)
